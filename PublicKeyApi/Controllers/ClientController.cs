@@ -19,7 +19,7 @@ namespace PublicKeyApi.Controllers
             _context = context;
         }
 
-        [HttpPost]
+        [HttpPost("Register")]
         public async Task<IActionResult> Register([FromBody]RegisterClientRequest request)
         {
             var (privateKey, publicKey) = CreatKeys();
@@ -36,15 +36,64 @@ namespace PublicKeyApi.Controllers
             {
                 ClientIdentifier = request.ClientIdentifier,
                 Name = request.Name,
-                PublicKey = publicKey,
                 CreatedAt = DateTime.UtcNow,
                 LastUpdatedAt = DateTime.UtcNow,
+                IntegrationClientKeys = new List<IntegrationClientKey>
+                {
+                    new IntegrationClientKey
+                    {
+                        PublicKey = publicKey,
+                        IsActive = true
+                    }
+                }
             };
 
             await _context.IntegrationClients.AddAsync(client);
             await _context.SaveChangesAsync();
 
             return Ok(new {client.ClientIdentifier, publicKey, privateKey});
+        }
+
+        [HttpPost("RegenerateKeys")]
+        public async Task<IActionResult> RegenerateKeys([FromBody] RegisterClientRequest request)
+        {
+            var existingClient = await _context.Set<IntegrationClient>()
+                .FirstOrDefaultAsync(c => c.ClientIdentifier == request.ClientIdentifier && c.IsActive && !c.IsDeleted);
+
+            if(existingClient == null)
+            {
+                return NotFound();
+            }
+
+            var (privateKey, publicKey) = CreatKeys();
+            using var transaction = await _context.Database.BeginTransactionAsync();
+            try
+            {
+                var integrationClientKeys = await _context.IntegrationClientKeys.Where(x => x.IntegrationClientId == existingClient.Id).ToListAsync();
+                foreach (var key in integrationClientKeys)
+                {
+                    key.IsActive = false;
+                }
+
+                var newKey = new IntegrationClientKey
+                {
+                    PublicKey = publicKey,
+                    IsActive = true,
+                    IntegrationClientId = existingClient.Id
+                };
+                await _context.AddAsync(newKey);
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+                return Ok(new { existingClient.ClientIdentifier, publicKey, privateKey });
+            }
+            catch(Exception ex)
+            {
+                await transaction.RollbackAsync();
+                return BadRequest(ex);
+                throw;
+            }
+
+            
         }
 
         private (string, string) CreatKeys()

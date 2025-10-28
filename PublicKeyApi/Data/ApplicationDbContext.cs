@@ -10,6 +10,7 @@ namespace PublicKeyApi.Data
         }
 
         public DbSet<IntegrationClient> IntegrationClients { get; set; }
+        public DbSet<IntegrationClientKey> IntegrationClientKeys { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
