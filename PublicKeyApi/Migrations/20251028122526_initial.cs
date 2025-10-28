@@ -19,7 +19,6 @@ namespace PublicKeyApi.Migrations
                         .Annotation("SqlServer:Identity", "1, 1"),
                     ClientIdentifier = table.Column<string>(type: "nvarchar(450)", nullable: false),
                     Name = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    PublicKey = table.Column<string>(type: "nvarchar(max)", nullable: false),
                     CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
                     LastUpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
                     IsDeleted = table.Column<bool>(type: "bit", nullable: false),
@@ -29,6 +28,29 @@ namespace PublicKeyApi.Migrations
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_IntegrationClients", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "IntegrationClientKeys",
+                columns: table => new
+                {
+                    IntegrationClientId = table.Column<int>(type: "int", nullable: false),
+                    PublicKey = table.Column<string>(type: "nvarchar(450)", nullable: false),
+                    IsActive = table.Column<bool>(type: "bit", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    LastUpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
+                    IsDeleted = table.Column<bool>(type: "bit", nullable: false),
+                    DeletedAt = table.Column<DateTime>(type: "datetime2", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_IntegrationClientKeys", x => new { x.IntegrationClientId, x.PublicKey });
+                    table.ForeignKey(
+                        name: "FK_IntegrationClientKeys_IntegrationClients_IntegrationClientId",
+                        column: x => x.IntegrationClientId,
+                        principalTable: "IntegrationClients",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
                 });
 
             migrationBuilder.CreateIndex(
@@ -41,6 +63,9 @@ namespace PublicKeyApi.Migrations
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.DropTable(
+                name: "IntegrationClientKeys");
+
             migrationBuilder.DropTable(
                 name: "IntegrationClients");
         }

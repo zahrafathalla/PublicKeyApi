@@ -24,7 +24,10 @@ namespace PublicKeyApi.Controllers
         public IActionResult Process([FromBody]IntegrationRequest request)
         {
             var clientIdentifier = Request.Headers["X-Client-Identifier"].ToString();
-            var existingClient = _context.IntegrationClients.AsNoTracking().Include(x => x.IntegrationClientKeys)
+            var timestamp = Request.Headers["X-Timestamp"].ToString();
+            var nonce = Request.Headers["X-Nonce"].ToString();
+
+            var existingClient = _context.IntegrationClients.AsNoTracking()
                 .FirstOrDefault(c => c.ClientIdentifier == clientIdentifier && c.IsActive && !c.IsDeleted);
 
             if(existingClient == null)
@@ -39,13 +42,17 @@ namespace PublicKeyApi.Controllers
                 return BadRequest("Missing signature header.");
             }
 
-            var clientpublicKey = existingClient.IntegrationClientKeys.FirstOrDefault(x => x.IsActive);
+            var clientpublicKey = _context.IntegrationClientKeys.FirstOrDefault(x => x.IsActive && x.IntegrationClientId == existingClient.Id);
             if(clientpublicKey == null)
             {
                 return BadRequest("public key is invalid");
             }
 
-            if (!VerifySignature(request, clientpublicKey.PublicKey, signature))
+            var apiPath = HttpContext.Request.Path.Value;
+
+            var rawString = $"ClientId={clientIdentifier}|Timestamp={timestamp}|Nonce={nonce}|Path={apiPath}";
+
+            if (!VerifySignature(rawString, clientpublicKey.PublicKey, signature))
             {
                 return Unauthorized("Invalid signature.");
             }
@@ -53,12 +60,12 @@ namespace PublicKeyApi.Controllers
             return Ok("Integration API is running.");
         }
 
-        private bool VerifySignature(IntegrationRequest data, string publicKey, string signature)
+        private bool VerifySignature(string data, string publicKey, string signature)
         {
             using var rsa = RSA.Create();
             rsa.ImportRSAPublicKey(Convert.FromBase64String(publicKey), out _);
 
-            byte[] dataBytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(data));
+            byte[] dataBytes = Encoding.UTF8.GetBytes(data);
             byte[] signatureBytes = Convert.FromBase64String(signature);
 
             return rsa.VerifyData(dataBytes, signatureBytes, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
@@ -68,20 +75,38 @@ namespace PublicKeyApi.Controllers
         [HttpPost("SignWithKey")]
         public IActionResult SignWithKey()
         {
-            string privateKeyBase64 = "MIIEpAIBAAKCAQEAyZcFltJ/0eNaviX2vLR9G0GzQ03w7urN8zH9Oxs14Ik2Iz8vlCHK1Sf4ztAq3cHS5xoLkgKefuZa/uTbEcu5lDWQUIsXugKJPqjg+T7s2RfcaC6/NPi2DuSqbK1p4hM6cmUZ2O+Fyirg/ltu6PNEAOCFuws+pWYh5UwMsblxssG3vPzO3YlFepZ2REAMTI4BJtwdHdiRioXlv5BVhq0KctGNuSfge5cndEyZu/P1x+TuTV/z/aPw7KehK/XWHwegQCcPRNz4lF65qSa8L2OtuA1cUemldHlYzwqmXX1BCSyyPvBNI8pB+MTU1lNPWLh2UDr3W1G/t1LUTFw/5bjbkQIDAQABAoIBAD6eF5Fav3NtwLERz8ub8MR3qvw8CJvd+a0SGQu0Dw8478URCnFj8cI2UVXEWZxaaW15rKBlCeB3I0rLwbSMaI+9957dJbiUsxbwlDk3r5Bblg4SfzgwDTUhGEL7tskPmfcQqm+1LwS2Pv8jXZckgToYg9Gu033C9MJp1gOai9OvRYSb4wZEdPpfkIJDWj+3vM2i+zvhNGzlLkVXZapFnq39rUikrROMWoH3HUsskG5xlGdBF7Q6z9R3UZYvTZKc9iF6juqVM5plqOOApbK2WyPILdsLcM0tsm4L6rsVftQgCT/r5xrymIvmOMs0U9kXAH82MSG+0AB2V8o9PqIv47UCgYEA5fiOhoiLVNXJKAOfk5HcdxRvRlqT9bUMQ1KRW3s7QM/WBqUFtkWlW/T3g0XasIf47NeiMMQv9mGSn+MMlPkSiyZVeUDufLtaG0tU40xG21ZyRzYQm2GFLmh2j9HQWpDDkbwzx9I6OoRLGhAHw/GyOV62Zob3sjlSwqACgJDDSF8CgYEA4GgfD7PUnR6GuIFXnXldI3A6jQ8xilcO7dWqkdkZ32wfpB/ELc3zuxhLEwmCxYUcwBgsUIgU0aTpClH9+CxtUfxryDpIEcpwkDeLr5JwnUkhOuuq0EtWDvbQvh1PSgXjFGnfZ6raRNE8SheusHhHpgjPxpDFhr3xRuxcDOE1Ig8CgYA3aTd2RQpFa6mnYZAer4OOkbbqHcMO7gvBYPCzOTMiv7FTMon4zDk2ugS1daxm4qxg7OgglfT0ibgZnEyYzJbiPl9T8whDt6TTdMhEaEmeaerpK6a+ubWsY/FFYAmy+LSWteFIIWh0VxH9eqVUWjVWS3Lpq1WddOBzErjnn3neQwKBgQCprPC3fcCoIFm7DklCD27mCcirua46rMLj/+edqarPbUCrZz19aLj+YUr6lPllAdYQRPbU2V/seCWgoQhH6sep8xNH7RFrKkdcNDORSEeQFahjlaetIRlr7SE+bojyLmtZlwfNqbipyg8s8qUqV3fNSeJYgERqMhpKBxM+xdXX7wKBgQCdpmClgsZYR8mNtoKIy1AbF0wi5uRZVNqeuS2o71Xx21gw+wiu1RJG2AvqSWrzbMZiquLZBpprwFxAN/MfnYnPqBQFQSytM38JCOJnKLNVvfpvz0GauaZ0C/+6m4kJN5maPJTkmxw5USid1TI4uygNEpCbGMdAPaHn66xnj9XQTg==";
+            // مفترض القيم دي يبعتهالك الـ frontend أو تولدها وقت التست
+            string clientId = "test-355";
+            string timestamp = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ");
+            string nonce = Guid.NewGuid().ToString();
+            string apiPath = "/api/Integration/Process";
 
-            string body = "{\"Action\":\"Test\"}";
+            // مفتاحك الخاص لتوليد الـ signature
+            string privateKeyBase64 = "MIIEowIBAAKCAQEAoZH6QqBB1zMfz71vMwx+5zUNQkhq16yxLQRjTsjhS6QvUrShO71smYjg9lopYANK5vn99Nb3BYLHsDZDAEhVDISctiINR3BT4MbISW4iwKjuPB2+GTUu16A/K61vQ7bnk06T9XqvULexn6IKONxbGQGAEy+dG6bkbwcwfNsQuX7bRNlLpiN5itnriNgjCduhGz6SoYfHiGYL/CUWJOYVgwokx90DKo74/0rpQY/mklENU47QAwq95Fnr6yqXAbPdBgwbKh8Slay+vp44BBgtiWJvgh0+dmXZvkHrZPJt8Ma4xJKVm5GFr4EVK63S56BlArot2YerN3AJaStPfYG2sQIDAQABAoIBAQCfcA4l8T8HvcuGlMlG9u3D+vY6knvcmO2+HrZg6JpqqnqIgvcYnLSuTgSxFgf+V0Fy7P9OvVLGfWfQ27sCbF6BG9wJX1D7Tj13crHyxFxHAm0VpcQR3Al9fwTXdS53A+dB1ijr9UVLwfnmLWEo+0pqQrDAPhwrTWXeqpmOnB7E7HjKyJctCFHwY5RArx1p8WiYDLWxOh/z7iu1jhYHNKTkBhBICBufqS7yHQ3/L9gSNSoMELv+bLpGFrVKs3M1hwO0JLmSTZE7S3X/1ezVLcEXbaKgob/8uCFvoAV79n5WjmouFQf2BbfXn+IYiK1SGF3WnKYCNqNMMO2DtNCgjmiBAoGBAMlDBa3RudIX09tQyf5K3YbdgOk8zw4KantcVCbFfmL2/bWg9EEyLoQcOKNPC0GfTPinCPneEiTr7J7bLXNCI2Km360LFN9XXhrepRQ7lV9zIE0WbbSlvpNnwLAeDrX/SwBPcomjF1rzr4379xc7Tdhp0uAt0wwWrMoEHiHtwudTAoGBAM2DZ48tVkcVE3jU2/1hEkvbvZt3yUAWLx78kCktM5aU/6/TFXUtbrZk3E+3PsHSaMxXKvtzuavlfGSeE/LRcpxWpz7oq5BPjCIewRn8VyR0kbTr275jnyzYtzxuznXlhpx6MfJW6zpzhc3l8wE8Ut27wnSwiEPqFn6l5bQAGv1rAoGASZVYiTGJp9eQXLoP8Ao9LibkD+JsrWx/e/TIy5gfWl2Faxea1g9b1G9hAcxPiEGO6cZgUMKxjZA4ZegqmN5Qg6wRUXogunt964MFhf024rv7zlNp7sc+gzRGzd1fcYkSSd3CObJIQrefsuCxeWv0TTB7qfz3EY9kw0N4JN2CCgMCgYBJrS1IOCGxNA4aCH2hldZgWbPc85GzpwBXpIXuLSVMe7g6iXss2g/R1dDhxzj5dXxanXlsUi2jQY9Z5w4RxCLJh4tH01QGVW5QoSPrM/rtt9iwusm5tK9Q/ZSbVsIvpAyhNnGHhr+n4dh7W0/GBqFSmsh42vzPFDHiT4lNAairZwKBgF7Lo3+h+PzWhnonERGgmtfBNIMziAOlyJES/LUxII/TdGoizYU2g2RsxyZU4AyJ8Lzv1wgq9Kot1Mml5h7I4Uog+cf1t5FQTqJvKZqKS98SyqWeFaGYXNF2P8jY27uaHpOGvXusnEQ4R5+me5pF8GPLnvY9tfwWzb4/yUNlxIgY";
+            // 1️⃣ إنشاء النص اللي هيتوقع عليه (metadata)
+            string rawString = $"ClientId={clientId}|Timestamp={timestamp}|Nonce={nonce}|Path={apiPath}";
 
-            byte[] dataBytes = Encoding.UTF8.GetBytes(body);
+            // 2️⃣ تحويل النص إلى bytes
+            byte[] dataBytes = Encoding.UTF8.GetBytes(rawString);
             byte[] privateKeyBytes = Convert.FromBase64String(privateKeyBase64);
 
+            // 3️⃣ توقيع النص بالمفتاح الخاص
             using (var rsa = RSA.Create())
             {
                 rsa.ImportRSAPrivateKey(privateKeyBytes, out _);
                 byte[] signature = rsa.SignData(dataBytes, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
                 string signatureBase64 = Convert.ToBase64String(signature);
 
-                return Ok("Signature: " + signatureBase64);
+                // 4️⃣ نرجّع التفاصيل علشان تعرفي تستخدمها في اختبار الـ endpoint
+                return Ok(new
+                {
+                    clientId,
+                    timestamp,
+                    nonce,
+                    apiPath,
+                    rawString,
+                    signature = signatureBase64
+                });
             }
         }
 

@@ -38,17 +38,19 @@ namespace PublicKeyApi.Controllers
                 Name = request.Name,
                 CreatedAt = DateTime.UtcNow,
                 LastUpdatedAt = DateTime.UtcNow,
-                IntegrationClientKeys = new List<IntegrationClientKey>
-                {
-                    new IntegrationClientKey
-                    {
-                        PublicKey = publicKey,
-                        IsActive = true
-                    }
-                }
             };
 
             await _context.IntegrationClients.AddAsync(client);
+            await _context.SaveChangesAsync();
+
+            await _context.IntegrationClientKeys.AddAsync(new IntegrationClientKey
+            {
+                IntegrationClientId = client.Id,
+                PublicKey = publicKey,
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow,
+                LastUpdatedAt = DateTime.UtcNow
+            });
             await _context.SaveChangesAsync();
 
             return Ok(new {client.ClientIdentifier, publicKey, privateKey});
@@ -73,13 +75,15 @@ namespace PublicKeyApi.Controllers
                 foreach (var key in integrationClientKeys)
                 {
                     key.IsActive = false;
+                    key.LastUpdatedAt = DateTime.UtcNow;
                 }
 
                 var newKey = new IntegrationClientKey
                 {
                     PublicKey = publicKey,
                     IsActive = true,
-                    IntegrationClientId = existingClient.Id
+                    IntegrationClientId = existingClient.Id,
+                    CreatedAt = DateTime.UtcNow
                 };
                 await _context.AddAsync(newKey);
                 await _context.SaveChangesAsync();

@@ -12,8 +12,8 @@ using PublicKeyApi.Data;
 namespace PublicKeyApi.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20251028114124_AddPubliKeysTable")]
-    partial class AddPubliKeysTable
+    [Migration("20251028122526_initial")]
+    partial class initial
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -62,6 +62,45 @@ namespace PublicKeyApi.Migrations
                         .IsUnique();
 
                     b.ToTable("IntegrationClients");
+                });
+
+            modelBuilder.Entity("PublicKeyApi.Entities.IntegrationClientKey", b =>
+                {
+                    b.Property<int>("IntegrationClientId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("PublicKey")
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("LastUpdatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("IntegrationClientId", "PublicKey");
+
+                    b.ToTable("IntegrationClientKeys");
+                });
+
+            modelBuilder.Entity("PublicKeyApi.Entities.IntegrationClientKey", b =>
+                {
+                    b.HasOne("PublicKeyApi.Entities.IntegrationClient", "IntegrationClient")
+                        .WithMany()
+                        .HasForeignKey("IntegrationClientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("IntegrationClient");
                 });
 #pragma warning restore 612, 618
         }
