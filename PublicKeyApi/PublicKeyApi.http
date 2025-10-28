@@ -1,0 +1,6 @@
+@PublicKeyApi_HostAddress = http://localhost:5001
+
+GET {{PublicKeyApi_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
