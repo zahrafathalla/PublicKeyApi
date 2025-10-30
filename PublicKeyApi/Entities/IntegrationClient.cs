@@ -7,5 +7,6 @@
         public string Name { get; set; } = string.Empty;
 
         public ICollection<IntegrationClientKey> IntegrationClientKeys = new List<IntegrationClientKey>();
+        public ICollection<UsedNonce> UsedNonces = new List<UsedNonce>();
     }
 }

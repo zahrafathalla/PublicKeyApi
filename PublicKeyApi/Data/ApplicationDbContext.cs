@@ -11,6 +11,7 @@ namespace PublicKeyApi.Data
 
         public DbSet<IntegrationClient> IntegrationClients { get; set; }
         public DbSet<IntegrationClientKey> IntegrationClientKeys { get; set; }
+        public DbSet<UsedNonce> UsedNonces { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
